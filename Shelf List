@@ -1,0 +1,47 @@
+WITH loans_renewals AS (
+ SELECT item_id,
+ COALESCE (COUNT(id), 0) AS loan_count,
+ COALESCE(SUM(renewal_count), 0) AS renewal_count,
+ MAX(loan_date) AS last_checkout_date
+ FROM folio_circulation.loan__t
+ GROUP BY item_id )
+SELECT
+ i.jsonb,
+ inst.hrid,
+ inst.title,
+ inst.cataloged_date,
+ hrt.call_number,
+ clt.name AS call_number_type,
+ holdtype.name AS holdings_type,
+ i.jsonb->>'barcode' AS barcode,
+ COALESCE(i.jsonb->>'enumeration', '') AS enumeration,
+ mattype.name AS material_type,
+ i.jsonb->>'effectiveShelvingOrder' AS effective_shelving_order,
+ pl.name AS perm_location_name,
+ tl.name AS temp_location_name,
+ loclib.name AS library_name,
+ i.jsonb->'status'->>'name' AS item_status,
+ COALESCE (lr.loan_count, 0) AS loan_count,
+ COALESCE (lr.renewal_count, 0) AS renewal_count,
+ lr.last_checkout_date::timestamp AS last_checkout_date
+FROM folio_inventory.item AS i
+LEFT JOIN folio_inventory.holdings_record__t AS hrt
+ON i.holdingsrecordid = hrt.id
+LEFT JOIN folio_inventory.instance__t AS inst
+ON hrt.instance_id = inst.id
+LEFT JOIN folio_inventory.call_number_type__t AS clt
+ON hrt.call_number_type_id = clt.id
+LEFT JOIN folio_inventory.material_type__t AS mattype
+ON i.materialtypeid = mattype.id
+LEFT JOIN folio_inventory.holdings_type__t AS holdtype
+ON hrt.holdings_type_id = holdtype.id
+LEFT JOIN folio_inventory.location__t AS pl
+ON pl.id = hrt.permanent_location_id
+LEFT JOIN folio_inventory.location__t AS tl
+ON tl.id = i.temporarylocationid
+LEFT JOIN folio_inventory.loclibrary__t AS loclib
+ON loclib.id=pl.library_id
+LEFT JOIN loans_renewals AS lr
+ON lr.item_id = i.id
+WHERE (inst.discovery_suppress = 'False' OR inst.discovery_suppress IS NULL)
+ORDER BY i.jsonb->>'effectiveShelvingOrder' COLLATE "C"
